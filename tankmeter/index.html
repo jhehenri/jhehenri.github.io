@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SignalK Display — USB Setup</title>
+<style>
+:root{--bg:#0a0a0a;--fg:#e0e0e0;--bg2:#1a1a1a;--bg3:#111;--border:#333;--muted:#999;--tab-fg:#888;--btn2-bg:#333;--btn2-fg:#ccc;--btn2-hover:#444;--net-hover:#222;--log-bg:#111;--log-border:#222;--log-fg:#6a6;--c-ok:#4f8;--c-err:#f88}
+[data-theme="light"]{--bg:#f5f5f5;--fg:#222;--bg2:#fff;--bg3:#eee;--border:#ccc;--muted:#666;--tab-fg:#888;--btn2-bg:#ddd;--btn2-fg:#333;--btn2-hover:#ccc;--net-hover:#e8e8e8;--log-bg:#f0f0f0;--log-border:#ddd;--log-fg:#484;--c-ok:#080;--c-err:#c00}
+@media(prefers-color-scheme:light){:root:not([data-theme]){--bg:#f5f5f5;--fg:#222;--bg2:#fff;--bg3:#eee;--border:#ccc;--muted:#666;--tab-fg:#888;--btn2-bg:#ddd;--btn2-fg:#333;--btn2-hover:#ccc;--net-hover:#e8e8e8;--log-bg:#f0f0f0;--log-border:#ddd;--log-fg:#484;--c-ok:#080;--c-err:#c00}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);max-width:520px;margin:0 auto}
+.header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 4px}
+h1{font-size:1.4em;color:#4af}
+.sub{color:var(--muted);font-size:0.85em;padding:0 20px 8px}
+.theme-toggle{display:flex;gap:4px}
+.theme-toggle button{width:auto;margin:0;padding:4px 10px;font-size:0.75em;border-radius:4px;background:var(--btn2-bg);color:var(--btn2-fg);border:1px solid var(--border)}
+.theme-toggle button:hover{background:var(--btn2-hover)}
+.theme-toggle button.active{background:#0064c8;color:#fff;border-color:#0064c8}
+.tabs{display:flex;border-bottom:1px solid var(--border);padding:0 10px}
+.tab{padding:10px 14px;cursor:pointer;color:var(--tab-fg);font-size:0.9em;border-bottom:2px solid transparent;transition:all 0.2s}
+.tab:hover{color:var(--fg)}
+.tab.active{color:#4af;border-bottom-color:#4af}
+.panel{display:none;padding:20px}
+.panel.active{display:block}
+label{display:block;margin:8px 0 4px;font-size:0.85em;color:var(--muted)}
+input,select{width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--fg);font-size:1em}
+select{cursor:pointer}
+button{width:100%;padding:12px;border:none;border-radius:6px;background:#0064c8;color:#fff;font-size:1em;cursor:pointer;margin-top:10px;transition:background 0.2s}
+button:hover{background:#0078e0}
+button:disabled{background:var(--btn2-bg);color:var(--muted);cursor:not-allowed}
+button.secondary{background:var(--btn2-bg);color:var(--btn2-fg)}
+button.secondary:hover{background:var(--btn2-hover)}
+button.danger{background:#900}
+button.danger:hover{background:#b00}
+.msg{padding:10px;border-radius:6px;margin:10px 0;font-size:0.9em}
+.ok{background:#062;color:var(--c-ok)}
+.err{background:#600;color:var(--c-err)}
+.info{background:#024;color:#8cf}
+.network{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--border);border-radius:6px;margin:4px 0;cursor:pointer;transition:background 0.2s}
+.network:hover{background:var(--net-hover)}
+.network .ssid{font-weight:600}
+.network .rssi{color:var(--muted);font-size:0.85em}
+.hidden{display:none}
+#log{background:var(--log-bg);border:1px solid var(--log-border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.8em;max-height:200px;overflow-y:auto;margin-top:10px;color:var(--log-fg)}
+</style>
+</head>
+<body>
+
+<div id="pw-warning" style="display:none;padding:10px;border-radius:6px;margin:12px 20px;font-size:0.9em;background:#530;color:#fb4;border:1px solid #a70">Default password in use — change it in the Device tab</div>
+<div class="header">
+<h1>SignalK Display</h1>
+</div>
+<p class="sub">USB Serial Configuration</p>
+
+<!-- Connect -->
+<div id="connect-section" style="padding:20px">
+<button id="connectBtn" onclick="doConnect()">Connect via USB</button>
+<div id="connectMsg"></div>
+</div>
+
+<!-- Tabs (hidden until connected) -->
+<div id="main-ui" class="hidden">
+<div class="tabs">
+<div class="tab active" onclick="showTab('status')">Status</div>
+<div class="tab" onclick="showTab('wifi')">WiFi</div>
+<div class="tab" onclick="showTab('signalk')">SignalK</div>
+<div class="tab" onclick="showTab('display')">Display</div>
+<div class="tab" onclick="showTab('device')">Device</div>
+</div>
+
+<div id="p-status" class="panel active">
+<div id="device-status" style="background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:12px;font-size:0.9em;line-height:1.8">Loading...</div>
+<button class="secondary" onclick="getConfig()" style="margin-top:8px">Refresh</button>
+</div>
+
+<div id="p-wifi" class="panel">
+<button class="secondary" onclick="scan()">Scan Networks</button>
+<div id="networks"></div>
+<label>SSID</label>
+<input id="ssid" placeholder="Network name">
+<label>Password</label>
+<input id="pw" type="password" placeholder="Leave empty for open networks">
+<label>IP Configuration</label>
+<select id="dhcp" onchange="toggleIpFields()">
+<option value="1">DHCP (automatic)</option>
+<option value="0">Static IP</option>
+</select>
+<div id="ip-fields" style="display:none">
+<label>IP Address</label><input id="ip" placeholder="192.168.1.50">
+<label>Gateway</label><input id="gateway" placeholder="192.168.1.1">
+<label>Subnet Mask</label><input id="subnet" value="255.255.255.0">
+<label>DNS Server</label><input id="dns" placeholder="192.168.1.1">
+</div>
+<button onclick="saveWifi()">Save WiFi</button>
+<div id="wifiMsg"></div>
+</div>
+
+<div id="p-signalk" class="panel">
+<label>Host</label>
+<input id="host" placeholder="192.168.1.100">
+<label>Port</label>
+<input id="port" type="number" value="3000">
+<label>Data Path</label>
+<input id="path" placeholder="tanks/freshWater/0/currentLevel">
+<label>Display Label</label>
+<input id="label" placeholder="Fresh Water">
+<label>Poll Interval (seconds)</label>
+<input id="interval" type="number" value="5" min="1" max="3600">
+<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+<label>Username (optional)</label>
+<input id="sk-user" placeholder="Leave empty if no auth needed">
+<label>Password (optional)</label>
+<input id="sk-pw" type="password" placeholder="SignalK password">
+<button onclick="saveSk()">Save SignalK</button>
+<div id="skMsg"></div>
+</div>
+
+<div id="p-display" class="panel">
+<label>Screen Rotation</label>
+<select id="rotation">
+<option value="0">0 - Default</option>
+<option value="1">1 - 90°</option>
+<option value="2">2 - 180°</option>
+<option value="3">3 - 270°</option>
+</select>
+<label>Bar Color</label>
+<div style="display:flex;gap:8px"><input id="color" type="color" value="#0064c8" style="height:44px;padding:4px;flex:1;border:1px solid #333;border-radius:6px;background:#1a1a1a"><button class="secondary" onclick="document.getElementById('color').value='#0064c8'" style="width:auto;margin:0;padding:0 16px;flex:0">Reset</button></div>
+<label style="display:flex;align-items:center;gap:8px;margin:12px 0"><input id="fullscreen" type="checkbox" style="width:auto"> Fullscreen bar (no title/status)</label>
+<button onclick="saveDisplay()">Save Display</button>
+<div id="displayMsg"></div>
+</div>
+
+<div id="p-device" class="panel">
+<label>Theme</label>
+<div class="theme-toggle" style="margin-bottom:16px">
+<button onclick="setTheme('light')" id="t-light">Light</button>
+<button onclick="setTheme('dark')" id="t-dark">Dark</button>
+<button onclick="setTheme('system')" id="t-system">System</button>
+</div>
+<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+<h3 style="margin-bottom:8px;color:var(--fg)">Change Admin Password</h3>
+<label>Current Password</label><input id="old-pw" type="password">
+<label>New Password</label><input id="new-pw" type="password">
+<label>Confirm Password</label><input id="new-pw2" type="password">
+<button onclick="changePassword()">Change Password</button>
+<div id="pwMsg"></div>
+<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+<button class="secondary" onclick="reboot()">Reboot</button>
+<button class="danger" onclick="if(confirm('Erase all settings and reboot?'))resetDevice()">Factory Reset</button>
+</div>
+
+<!-- Log always visible at bottom -->
+<div style="padding:0 20px 20px">
+<div id="log"></div>
+</div>
+</div>
+
+<script>
+function setTheme(t) {
+  localStorage.setItem('theme', t);
+  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  document.querySelectorAll('.theme-toggle button').forEach(b => b.classList.toggle('active', b.id === 't-' + t));
+}
+(function(){ let t = localStorage.getItem('theme') || 'system'; setTheme(t); })();
+
+let port, reader, writer;
+let readBuffer = '';
+let pendingResolve = null;
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + name));
+}
+
+var currentNet = {};
+function toggleIpFields() {
+  let isStatic = document.getElementById('dhcp').value === '0';
+  document.getElementById('ip-fields').style.display = isStatic ? 'block' : 'none';
+  if (isStatic && currentNet.ip && !document.getElementById('ip').value) {
+    document.getElementById('ip').value = currentNet.ip || '';
+    document.getElementById('gateway').value = currentNet.gateway || '';
+    document.getElementById('subnet').value = currentNet.subnet || '255.255.255.0';
+    document.getElementById('dns').value = currentNet.dns || '';
+  }
+}
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function showMsg(id, text, type) {
+  document.getElementById(id).innerHTML = `<div class="msg ${type}">${text}</div>`;
+}
+
+async function doConnect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+
+    const encoder = new TextEncoderStream();
+    encoder.readable.pipeTo(port.writable);
+    writer = encoder.writable.getWriter();
+
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    reader = decoder.readable.getReader();
+
+    document.getElementById('connect-section').classList.add('hidden');
+    document.getElementById('main-ui').classList.remove('hidden');
+
+    log('Connected to device');
+    readLoop();
+    getConfig();
+  } catch (e) {
+    showMsg('connectMsg', 'Failed: ' + e.message, 'err');
+  }
+}
+
+async function readLoop() {
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      readBuffer += value;
+      let lines = readBuffer.split('\n');
+      readBuffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        log('← ' + trimmed);
+        try {
+          const json = JSON.parse(trimmed);
+          if (pendingResolve) {
+            const resolve = pendingResolve;
+            pendingResolve = null;
+            resolve(json);
+          }
+        } catch (e) {
+          // Not JSON — just log output
+        }
+      }
+    }
+  } catch (e) {
+    log('Read error: ' + e.message);
+  }
+}
+
+async function sendCmd(obj, timeout = 10000) {
+  const json = JSON.stringify(obj);
+  log('→ ' + json);
+  await writer.write(json + '\n');
+  return new Promise((resolve, reject) => {
+    pendingResolve = resolve;
+    setTimeout(() => {
+      if (pendingResolve === resolve) {
+        pendingResolve = null;
+        reject(new Error('Timeout'));
+      }
+    }, timeout);
+  });
+}
+
+async function scan() {
+  try {
+    document.getElementById('networks').innerHTML = '<div class="msg info">Scanning...</div>';
+    const resp = await sendCmd({ cmd: 'scan' }, 15000);
+    if (!resp.networks) {
+      document.getElementById('networks').innerHTML = '<div class="msg err">No networks found</div>';
+      return;
+    }
+    resp.networks.sort((a, b) => b.rssi - a.rssi);
+    let html = '';
+    for (const n of resp.networks) {
+      const lock = n.open ? '' : '🔒 ';
+      html += `<div class="network" onclick="document.getElementById('ssid').value='${n.ssid.replace(/'/g, "\\'")}';showTab('wifi');document.getElementById('pw').focus()">
+        <span class="ssid">${lock}${n.ssid}</span>
+        <span class="rssi">${n.rssi} dBm</span>
+      </div>`;
+    }
+    document.getElementById('networks').innerHTML = html;
+  } catch (e) {
+    document.getElementById('networks').innerHTML = `<div class="msg err">${e.message}</div>`;
+  }
+}
+
+async function saveWifi() {
+  try {
+    let isDhcp = document.getElementById('dhcp').value === '1';
+    const resp = await sendCmd({
+      cmd: 'save_wifi',
+      ssid: document.getElementById('ssid').value,
+      pw: document.getElementById('pw').value,
+      dhcp: isDhcp,
+      ip: document.getElementById('ip').value,
+      gateway: document.getElementById('gateway').value,
+      subnet: document.getElementById('subnet').value,
+      dns: document.getElementById('dns').value
+    });
+    showMsg('wifiMsg', resp.ok ? 'Saved! Reboot to connect.' : (resp.error || 'Error'), resp.ok ? 'ok' : 'err');
+  } catch (e) {
+    showMsg('wifiMsg', e.message, 'err');
+  }
+}
+
+async function saveSk() {
+  try {
+    const resp = await sendCmd({
+      cmd: 'save_sk',
+      host: document.getElementById('host').value,
+      port: parseInt(document.getElementById('port').value) || 3000,
+      path: document.getElementById('path').value,
+      label: document.getElementById('label').value,
+      interval: parseInt(document.getElementById('interval').value) || 5,
+      username: document.getElementById('sk-user').value,
+      password: document.getElementById('sk-pw').value
+    });
+    showMsg('skMsg', resp.ok ? 'Saved' : (resp.error || 'Error'), resp.ok ? 'ok' : 'err');
+  } catch (e) {
+    showMsg('skMsg', e.message, 'err');
+  }
+}
+
+async function getConfig() {
+  try {
+    const resp = await sendCmd({ cmd: 'get_config' });
+    if (resp.wifi) {
+      document.getElementById('ssid').value = resp.wifi.ssid || '';
+      document.getElementById('dhcp').value = resp.wifi.dhcp === false ? '0' : '1';
+      document.getElementById('ip').value = resp.wifi.static_ip || '';
+      document.getElementById('gateway').value = resp.wifi.gateway || '';
+      document.getElementById('subnet').value = resp.wifi.subnet || '255.255.255.0';
+      document.getElementById('dns').value = resp.wifi.dns || '';
+      toggleIpFields();
+    }
+    if (resp.sk) {
+      document.getElementById('host').value = resp.sk.host || '';
+      document.getElementById('port').value = resp.sk.port || 3000;
+      document.getElementById('path').value = resp.sk.path || '';
+      document.getElementById('label').value = resp.sk.label || '';
+      document.getElementById('interval').value = resp.sk.interval || 5;
+      document.getElementById('sk-user').value = resp.sk.username || '';
+    }
+    if (resp.default_password) {
+      document.getElementById('pw-warning').style.display = 'block';
+    }
+    if (resp.display) {
+      document.getElementById('rotation').value = resp.display.rotation || 0;
+      document.getElementById('color').value = resp.display.color || '#0064c8';
+      document.getElementById('fullscreen').checked = !!resp.display.fullscreen;
+    }
+    if (resp.current) currentNet = resp.current;
+    // Render status panel
+    let h = '<b>USB:</b> <span style="color:var(--c-ok)">Connected</span><br>';
+    if (resp.wifi) {
+      if (resp.wifi.connected) {
+        h += '<b>WiFi:</b> <span style="color:var(--c-ok)">' + (resp.wifi.ssid||'') + '</span><br>';
+        h += '<b>IP:</b> ' + (resp.wifi.ip||'—') + ' &nbsp;<a href="http://' + resp.wifi.ip + '/" target="_blank" style="color:#4af">Open config</a><br>';
+      } else {
+        h += '<b>WiFi:</b> <span style="color:var(--c-err)">Disconnected</span>' + (resp.wifi.ssid ? ' (' + resp.wifi.ssid + ')' : '') + '<br>';
+      }
+    }
+    if (resp.status) {
+      let s = resp.status;
+      h += '<b>SignalK:</b> ' + (s.sk_ok > 0 ? '<span style="color:var(--c-ok)">OK</span>' : '<span style="color:var(--c-err)">No data</span>') + '<br>';
+      if (s.sk_ok > 0) h += '<b>Value:</b> ' + (s.last_value * 100).toFixed(1) + '%<br>';
+      h += '<b>Polls:</b> ' + s.sk_ok + ' ok, ' + s.sk_fail + ' failed<br>';
+      if (s.last_error) h += '<b>Last error:</b> <span style="color:var(--c-err)">' + s.last_error + '</span><br>';
+      h += '<b>Uptime:</b> ' + Math.floor(s.uptime/60) + 'm ' + s.uptime%60 + 's';
+    }
+    document.getElementById('device-status').innerHTML = h;
+    log('Config loaded');
+  } catch (e) {
+    log('Failed to load config: ' + e.message);
+  }
+}
+
+async function saveDisplay() {
+  try {
+    const resp = await sendCmd({
+      cmd: 'save_display',
+      rotation: parseInt(document.getElementById('rotation').value),
+      color: document.getElementById('color').value,
+      fullscreen: document.getElementById('fullscreen').checked
+    });
+    if (resp.ok) {
+      showMsg('displayMsg', 'Saved', 'ok');
+    } else {
+      showMsg('displayMsg', resp.error || 'Error', 'err');
+    }
+  } catch (e) {
+    showMsg('displayMsg', e.message, 'err');
+  }
+}
+
+async function changePassword() {
+  let old = document.getElementById('old-pw').value;
+  let p1 = document.getElementById('new-pw').value;
+  let p2 = document.getElementById('new-pw2').value;
+  if (!old) { showMsg('pwMsg', 'Current password required', 'err'); return; }
+  if (!p1) { showMsg('pwMsg', 'New password cannot be empty', 'err'); return; }
+  if (p1 !== p2) { showMsg('pwMsg', 'Passwords do not match', 'err'); return; }
+  try {
+    const resp = await sendCmd({ cmd: 'save_password', old_password: old, password: p1 });
+    if (resp.ok) {
+      showMsg('pwMsg', 'Password changed', 'ok');
+      document.getElementById('old-pw').value = '';
+      document.getElementById('new-pw').value = '';
+      document.getElementById('new-pw2').value = '';
+      document.getElementById('pw-warning').style.display = 'none';
+    } else {
+      showMsg('pwMsg', resp.error || 'Error', 'err');
+    }
+  } catch (e) {
+    showMsg('pwMsg', e.message, 'err');
+  }
+}
+
+async function reboot() {
+  try {
+    await sendCmd({ cmd: 'reboot' });
+  } catch (e) { /* expected — device reboots */ }
+  document.body.innerHTML = '<h1 style="color:#4af;text-align:center;margin-top:40vh">Rebooting...</h1><p style="color:#666;text-align:center">Reconnect after reboot</p>';
+}
+
+async function resetDevice() {
+  try {
+    await sendCmd({ cmd: 'reset' });
+  } catch (e) { /* expected */ }
+  document.body.innerHTML = '<h1 style="color:#f44;text-align:center;margin-top:40vh">Factory Reset</h1><p style="color:#666;text-align:center">Device will reboot</p>';
+}
+</script>
+</body>
+</html>
