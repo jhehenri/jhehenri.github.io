@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SignalK Display — USB Setup</title>
+<title>NautiGauge — USB Setup</title>
 <style>
 :root{--bg:#0a0a0a;--fg:#e0e0e0;--bg2:#1a1a1a;--bg3:#111;--border:#333;--muted:#999;--tab-fg:#888;--btn2-bg:#333;--btn2-fg:#ccc;--btn2-hover:#444;--net-hover:#222;--log-bg:#111;--log-border:#222;--log-fg:#6a6;--c-ok:#4f8;--c-err:#f88}
 [data-theme="light"]{--bg:#f5f5f5;--fg:#222;--bg2:#fff;--bg3:#eee;--border:#ccc;--muted:#666;--tab-fg:#888;--btn2-bg:#ddd;--btn2-fg:#333;--btn2-hover:#ccc;--net-hover:#e8e8e8;--log-bg:#f0f0f0;--log-border:#ddd;--log-fg:#484;--c-ok:#080;--c-err:#c00}
@@ -49,7 +49,7 @@ button.danger:hover{background:#b00}
 
 <div id="pw-warning" style="display:none;padding:10px;border-radius:6px;margin:12px 20px;font-size:0.9em;background:#530;color:#fb4;border:1px solid #a70">Default password in use — change it in the Device tab</div>
 <div class="header">
-<h1>SignalK Display</h1>
+<h1>NautiGauge</h1>
 </div>
 <p class="sub">USB Serial Configuration</p>
 
@@ -64,13 +64,13 @@ button.danger:hover{background:#b00}
 <div class="tabs">
 <div class="tab active" onclick="showTab('status')">Status</div>
 <div class="tab" onclick="showTab('wifi')">WiFi</div>
-<div class="tab" onclick="showTab('signalk')">SignalK</div>
+<div class="tab" onclick="showTab('datasrc')">Data Source</div>
 <div class="tab" onclick="showTab('display')">Display</div>
 <div class="tab" onclick="showTab('device')">Device</div>
 </div>
 
 <div id="p-status" class="panel active">
-<div id="device-status" style="background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:12px;font-size:0.9em;line-height:1.8">Loading...</div>
+<div id="device-status" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:0.9em;line-height:1.8">Loading...</div>
 <button class="secondary" onclick="getConfig()" style="margin-top:8px">Refresh</button>
 </div>
 
@@ -96,7 +96,13 @@ button.danger:hover{background:#b00}
 <div id="wifiMsg"></div>
 </div>
 
-<div id="p-signalk" class="panel">
+<div id="p-datasrc" class="panel">
+<label>Data Source</label>
+<select id="ds-type" onchange="toggleDataSource()">
+<option value="0">SignalK</option>
+<option value="1">N2K Gateway</option>
+</select>
+<div id="ds-sk">
 <label>Host</label>
 <input id="host" placeholder="192.168.1.100">
 <label>Port</label>
@@ -112,8 +118,21 @@ button.danger:hover{background:#b00}
 <input id="sk-user" placeholder="Leave empty if no auth needed">
 <label>Password (optional)</label>
 <input id="sk-pw" type="password" placeholder="SignalK password">
-<button onclick="saveSk()">Save SignalK</button>
-<div id="skMsg"></div>
+</div>
+<div id="ds-n2k" style="display:none">
+<label>Host</label>
+<input id="n2k-host" placeholder="192.168.1.1">
+<label>Port</label>
+<input id="n2k-port" type="number" value="2000">
+<button class="secondary" onclick="scanN2k()">Scan Gateway</button>
+<div id="n2k-tanks"></div>
+<label>Display Label</label>
+<input id="n2k-label" placeholder="Fresh Water">
+<label>Tank Instance (0-15)</label>
+<input id="n2k-instance" type="number" value="0" min="0" max="15">
+</div>
+<button onclick="saveDataSource()">Save Data Source</button>
+<div id="dsMsg"></div>
 </div>
 
 <div id="p-display" class="panel">
@@ -125,7 +144,7 @@ button.danger:hover{background:#b00}
 <option value="3">3 - 270°</option>
 </select>
 <label>Bar Color</label>
-<div style="display:flex;gap:8px"><input id="color" type="color" value="#0064c8" style="height:44px;padding:4px;flex:1;border:1px solid #333;border-radius:6px;background:#1a1a1a"><button class="secondary" onclick="document.getElementById('color').value='#0064c8'" style="width:auto;margin:0;padding:0 16px;flex:0">Reset</button></div>
+<div style="display:flex;gap:8px"><input id="color" type="color" value="#0064c8" style="height:44px;padding:4px;flex:1;border:1px solid var(--border);border-radius:6px;background:var(--bg2)"><button class="secondary" onclick="document.getElementById('color').value='#0064c8'" style="width:auto;margin:0;padding:0 16px;flex:0">Reset</button></div>
 <label style="display:flex;align-items:center;gap:8px;margin:12px 0"><input id="fullscreen" type="checkbox" style="width:auto"> Fullscreen bar (no title/status)</label>
 <button onclick="saveDisplay()">Save Display</button>
 <div id="displayMsg"></div>
@@ -171,8 +190,14 @@ let readBuffer = '';
 let pendingResolve = null;
 
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === name));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().replace(' ','') === name.replace(' ','')));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + name));
+}
+
+function toggleDataSource() {
+  let t = document.getElementById('ds-type').value;
+  document.getElementById('ds-sk').style.display = t === '0' ? 'block' : 'none';
+  document.getElementById('ds-n2k').style.display = t === '1' ? 'block' : 'none';
 }
 
 var currentNet = {};
@@ -307,21 +332,53 @@ async function saveWifi() {
   }
 }
 
-async function saveSk() {
+async function scanN2k() {
+  let h = document.getElementById('n2k-host').value;
+  let p = parseInt(document.getElementById('n2k-port').value) || 2000;
+  if (!h) { document.getElementById('n2k-tanks').innerHTML = '<div class="msg err">Enter host first</div>'; return; }
+  document.getElementById('n2k-tanks').innerHTML = '<div class="msg info">Scanning (~10s)...</div>';
   try {
-    const resp = await sendCmd({
-      cmd: 'save_sk',
-      host: document.getElementById('host').value,
-      port: parseInt(document.getElementById('port').value) || 3000,
-      path: document.getElementById('path').value,
-      label: document.getElementById('label').value,
-      interval: parseInt(document.getElementById('interval').value) || 5,
-      username: document.getElementById('sk-user').value,
-      password: document.getElementById('sk-pw').value
-    });
-    showMsg('skMsg', resp.ok ? 'Saved' : (resp.error || 'Error'), resp.ok ? 'ok' : 'err');
+    const resp = await sendCmd({ cmd: 'scan_n2k', host: h, port: p }, 15000);
+    if (resp.error) { document.getElementById('n2k-tanks').innerHTML = '<div class="msg err">' + resp.error + '</div>'; return; }
+    if (!resp.tanks || resp.tanks.length === 0) { document.getElementById('n2k-tanks').innerHTML = '<div class="msg err">No tanks found</div>'; return; }
+    let html = '';
+    for (let t of resp.tanks) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--border);border-radius:6px;margin:4px 0;cursor:pointer" onclick="document.getElementById(\'n2k-instance\').value=' + t.instance + ';document.getElementById(\'n2k-label\').value=\'' + t.type.replace(/'/g, "\\'") + '\'">';
+      html += '<span><b>#' + t.instance + '</b> ' + t.type + '</span><span style="color:var(--muted)">' + (t.level * 100).toFixed(1) + '%</span></div>';
+    }
+    document.getElementById('n2k-tanks').innerHTML = html;
   } catch (e) {
-    showMsg('skMsg', e.message, 'err');
+    document.getElementById('n2k-tanks').innerHTML = '<div class="msg err">' + e.message + '</div>';
+  }
+}
+
+async function saveDataSource() {
+  try {
+    let t = document.getElementById('ds-type').value;
+    let resp;
+    if (t === '0') {
+      resp = await sendCmd({
+        cmd: 'save_sk',
+        host: document.getElementById('host').value,
+        port: parseInt(document.getElementById('port').value) || 3000,
+        path: document.getElementById('path').value,
+        label: document.getElementById('label').value,
+        interval: parseInt(document.getElementById('interval').value) || 5,
+        username: document.getElementById('sk-user').value,
+        password: document.getElementById('sk-pw').value
+      });
+    } else {
+      resp = await sendCmd({
+        cmd: 'save_n2k',
+        host: document.getElementById('n2k-host').value,
+        port: parseInt(document.getElementById('n2k-port').value) || 2000,
+        label: document.getElementById('n2k-label').value,
+        instance: parseInt(document.getElementById('n2k-instance').value) || 0
+      });
+    }
+    showMsg('dsMsg', resp.ok ? 'Saved' : (resp.error || 'Error'), resp.ok ? 'ok' : 'err');
+  } catch (e) {
+    showMsg('dsMsg', e.message, 'err');
   }
 }
 
@@ -337,6 +394,10 @@ async function getConfig() {
       document.getElementById('dns').value = resp.wifi.dns || '';
       toggleIpFields();
     }
+    if (resp.datasrc) {
+      document.getElementById('ds-type').value = String(resp.datasrc.type || 0);
+      toggleDataSource();
+    }
     if (resp.sk) {
       document.getElementById('host').value = resp.sk.host || '';
       document.getElementById('port').value = resp.sk.port || 3000;
@@ -344,6 +405,12 @@ async function getConfig() {
       document.getElementById('label').value = resp.sk.label || '';
       document.getElementById('interval').value = resp.sk.interval || 5;
       document.getElementById('sk-user').value = resp.sk.username || '';
+    }
+    if (resp.n2k) {
+      document.getElementById('n2k-host').value = resp.n2k.host || '';
+      document.getElementById('n2k-port').value = resp.n2k.port || 2000;
+      document.getElementById('n2k-label').value = resp.n2k.label || '';
+      document.getElementById('n2k-instance').value = resp.n2k.instance || 0;
     }
     if (resp.default_password) {
       document.getElementById('pw-warning').style.display = 'block';
@@ -366,9 +433,13 @@ async function getConfig() {
     }
     if (resp.status) {
       let s = resp.status;
-      h += '<b>SignalK:</b> ' + (s.sk_ok > 0 ? '<span style="color:var(--c-ok)">OK</span>' : '<span style="color:var(--c-err)">No data</span>') + '<br>';
-      if (s.sk_ok > 0) h += '<b>Value:</b> ' + (s.last_value * 100).toFixed(1) + '%<br>';
-      h += '<b>Polls:</b> ' + s.sk_ok + ' ok, ' + s.sk_fail + ' failed<br>';
+      let srcName = (s.source === 'nmea2000') ? 'N2K Gateway' : 'SignalK';
+      let ok = s.sk_ok || s.n2k_ok || 0;
+      let fail = s.sk_fail || s.n2k_fail || 0;
+      h += '<b>Source:</b> ' + srcName + '<br>';
+      h += '<b>Data:</b> ' + (ok > 0 ? '<span style="color:var(--c-ok)">OK</span>' : '<span style="color:var(--c-err)">No data</span>') + '<br>';
+      if (ok > 0) h += '<b>Value:</b> ' + (s.last_value * 100).toFixed(1) + '%<br>';
+      h += '<b>Polls:</b> ' + ok + ' ok, ' + fail + ' failed<br>';
       if (s.last_error) h += '<b>Last error:</b> <span style="color:var(--c-err)">' + s.last_error + '</span><br>';
       h += '<b>Uptime:</b> ' + Math.floor(s.uptime/60) + 'm ' + s.uptime%60 + 's';
     }
